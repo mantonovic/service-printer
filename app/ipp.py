@@ -1,0 +1,1 @@
+# Not used in host CUPS mode; kept as a stub for future reference.
