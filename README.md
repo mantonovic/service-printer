@@ -7,78 +7,201 @@ This container reuses your host CUPS daemon. It discovers printers (CUPS queues)
 - Your host already has queues configured (IPP, LPD, JetDirect, authentication, etc.).
 - Inside the container, we connect directly to your host CUPS, so queue names and behavior are identical.
 
-## Quick start
+## Using the Published Image
+
+The image is published at:
+
+`registry.gitlab.com/tdmsa/service-printer:1.0.0`
+
+You do NOT need to build locally unless you are developing changes. Pulling and running is enough.
+
+### 1. Prerequisites
+
+- A host running CUPS with queues already configured (check with `lpstat -p`).
+- The CUPS UNIX domain socket location (usually `/run/cups/cups.sock` or `/var/run/cups/cups.sock`).
+- A writable directory on the host for dropped PDFs and archives (e.g. `${PWD}/printdrop`).
+- (Recommended) Run the container with your user UID/GID and add the CUPS socket’s group so the socket can be accessed.
+
+Find the socket group GID:
 
 ```bash
-version=$(cat ${PWD}/VERSION)
-docker build -t registry.gitlab.com/tdmsa/service-printer:$version .
+stat -c %g /run/cups/cups.sock
+```
 
+### 2. Simple One‑Shot Run
+
+If you just want to test quickly (assumes socket at `/run/cups/cups.sock`):
+
+```bash
 mkdir -p ${PWD}/printdrop
-
-# Grant container access to the host CUPS socket's group
 CUPS_GID=$(stat -c %g /run/cups/cups.sock)
 
 docker run --rm \
-  --name printer-service \
+  --name service-printer \
   --network=host \
   --user $(id -u):$(id -g) \
   --group-add ${CUPS_GID} \
-  -e DISCOVERY_METHODS=cups,mdns \
   -e CUPS_SERVER=/run/cups/cups.sock \
+  -e DISCOVERY_METHODS=cups,mdns \
   -v /run/cups/cups.sock:/run/cups/cups.sock \
   -v /etc/cups:/etc/cups:ro \
   -v ${PWD}/printdrop:/data/printers \
-  registry.gitlab.com/tdmsa/service-printer:$version
+  registry.gitlab.com/tdmsa/service-printer:1.0.0
 ```
 
-Drop PDFs into `/srv/printdrop/<queue_name>/`. Each file is submitted to CUPS and then moved into `/srv/printdrop/<queue_name>/archive/`.
+Then drop a PDF file:
 
-## PRINTER_STATIC_JSON
+```bash
+cp invoice123.pdf ${PWD}/printdrop/<queue_name>/
+```
 
-- If set, it explicitly controls which queues the container manages. Only those listed will get folders and be monitored. Format:
+After submission the file is moved to:
 
-```json
+```
+${PWD}/printdrop/<queue_name>/archive/invoice123_YYYYmmdd-HHMMSS.pdf
+```
+
+### 3. Locking Down Managed Queues (PRINTER_STATIC_JSON)
+
+First run without `PRINTER_STATIC_JSON`. The container will log a suggestion:
+
+```
+PRINTER_STATIC_JSON suggestion (copy and set this env var ...):
 [
-  { "name": "QueueA" },
-  { "name": "HP_Color_LaserJet_M455_B94849" }
+  { "name": "HP_Color_LaserJet_M455_B94849" },
+  { "name": "Brother_DCP_L3550CDW_series" }
 ]
 ```
 
-- If not set, at startup the container will:
-  - Discover available queues from CUPS,
-  - Manage those queues,
-  - Print a ready-to-copy PRINTER_STATIC_JSON suggestion to the logs so you can pin the set of managed queues and restart with it.
+Copy that JSON and pass on next run:
 
-This makes it easy to lock down exactly which printers are used.
+```bash
+-e PRINTER_STATIC_JSON='[{"name":"HP_Color_LaserJet_M455_B94849"},{"name":"Brother_DCP_L3550CDW_series"}]'
+```
 
-## Environment variables
+Only those folders will be created and monitored.
 
-- BASE_PATH=/data/printers
-- ARCHIVE_SUBDIR=archive
-- DISCOVERY_METHODS=cups,mdns (comma list: cups, mdns, static)
-- FILE_STABLE_SECONDS=2
-- PRINT_RETRY_COUNT=3
-- PRINT_RETRY_DELAY=5
-- INCLUDE_REGEX=
-- EXCLUDE_REGEX=
-- PRINTER_STATIC_JSON=
-- LOG_LEVEL=INFO
-- USE_PYCUPS=1
-- CREATE_MISSING=1
-- CUPS_SERVER=
-  - Set to `/run/cups/cups.sock` to use the mounted host socket.
-  - Or `host:port` to target remote CUPS directly.
+You can also use the short form list of strings:
 
-## Notes
+```bash
+-e PRINTER_STATIC_JSON='["HP_Color_LaserJet_M455_B94849","Brother_DCP_L3550CDW_series"]'
+```
 
-- Managing only CUPS queues by default avoids mDNS-only devices that are not set up as queues (which would fail). You can still keep mdns in discovery to aid future queue setup.
-- If you see “printer or class does not exist,” ensure:
-  - You mounted the socket and added its group to the container (see quick start).
-  - The queue exists in host CUPS (`lpstat -p` on host).
-  - CUPS_SERVER is correct.
+### 4. Environment Variables Summary
 
-## Troubleshooting
+| Variable | Meaning | Typical Value |
+|----------|---------|---------------|
+| CUPS_SERVER | Path to socket or host:port of CUPS | /run/cups/cups.sock |
+| DISCOVERY_METHODS | Comma list: cups, mdns, static | cups,mdns |
+| PRINTER_STATIC_JSON | Explicit printers to manage (queue names) | JSON array |
+| BASE_PATH | Root folder for printer directories | /data/printers |
+| ARCHIVE_SUBDIR | Archive subfolder name | archive |
+| FILE_STABLE_SECONDS | Seconds file size must remain unchanged | 2 |
+| PRINT_RETRY_COUNT | Attempts per file | 3 |
+| PRINT_RETRY_DELAY | Seconds between retries | 5 |
+| LOG_LEVEL | Logging level | INFO |
+| USE_PYCUPS | Use pycups if available (1/0) | 1 |
+| CREATE_MISSING | Monitor base path for new folders | 1 |
+| INCLUDE_REGEX | Only manage names matching regex | (optional) |
+| EXCLUDE_REGEX | Exclude names matching regex | (optional) |
 
-- Permission denied on /data/printers: run with `--user $(id -u):$(id -g)` or chown/chmod the host directory for write access.
-- No queues discovered: verify CUPS is running; socket is mounted; container has the socket’s group; and `CUPS_SERVER=/run/cups/cups.sock` is set.
-- Jobs fail for statically listed queues: ensure the queue name exactly matches CUPS (`lpstat -p`), and that the container can reach CUPS.
+### 5. Docker Compose Usage
+
+Create `docker-compose.yml` (Compose v3+). Adjust socket path if different.
+
+```yaml
+services:
+  service-printer:
+    image: registry.gitlab.com/tdmsa/service-printer:1.0.0
+    container_name: service-printer
+    network_mode: host            # For CUPS socket + optional mDNS visibility
+    user: "${UID}:${GID}"         # Export your UID/GID before running: export UID=$(id -u); export GID=$(id -g)
+    group_add:
+      - "${CUPS_GID}"             # export CUPS_GID=$(stat -c %g /run/cups/cups.sock)
+    environment:
+      CUPS_SERVER: /run/cups/cups.sock
+      DISCOVERY_METHODS: cups,mdns
+      LOG_LEVEL: INFO
+      PRINT_RETRY_COUNT: 3
+      PRINT_RETRY_DELAY: 5
+      FILE_STABLE_SECONDS: 2
+      # Uncomment to lock printers:
+      # PRINTER_STATIC_JSON: '[{"name":"HP_Color_LaserJet_M455_B94849"},{"name":"Brother_DCP_L3550CDW_series"}]'
+    volumes:
+      - /run/cups/cups.sock:/run/cups/cups.sock
+      - /etc/cups:/etc/cups:ro
+      - ${PWD}/printdrop:/data/printers
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-c", "test -S /run/cups/cups.sock && ls /data/printers || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+```
+
+Bring it up:
+
+```bash
+export UID=$(id -u)
+export GID=$(id -g)
+export CUPS_GID=$(stat -c %g /run/cups/cups.sock)
+mkdir -p ${PWD}/printdrop
+docker compose up -d
+```
+
+View logs:
+
+```bash
+docker compose logs -f service-printer
+```
+
+### 6. Updating the Image
+
+To pull a newer patch release:
+
+```bash
+docker pull registry.gitlab.com/tdmsa/service-printer:1.0.1
+docker compose up -d --force-recreate
+```
+
+(Adjust tag as new versions are published.)
+
+### 7. Common Issues
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Queue folder exists but print fails with “not found” | Queue not defined in host CUPS | Add queue in CUPS (`lpadmin` or UI), restart container |
+| Permission denied on socket | Missing group-add for socket’s group GID | Add `group_add: [ "${CUPS_GID}" ]` |
+| No suggestion JSON printed | No CUPS queues discovered | Check CUPS is running; verify socket path & permissions |
+| mDNS printers show but fail to print | Device discovered, queue not added to CUPS | Add queue to CUPS; then restart |
+
+### 8. Archiving Behavior
+
+Printed PDF → renamed with timestamp:
+```
+original.pdf -> original_20251113-134500.pdf
+```
+Failed print → prefixed with `FAILED_`:
+```
+FAILED_original_20251113-134500.pdf
+```
+
+### 9. Locking Down Access
+
+If you want to prevent ad‑hoc folder creation:
+- Set `CREATE_MISSING=0`
+- Provide `PRINTER_STATIC_JSON` with the exact queues.
+
+### 10. Uninstall / Cleanup
+
+```bash
+docker compose down
+rm -rf ${PWD}/printdrop
+```
+
+(Keep archives as needed before deletion.)
+
+---
+
+If you need a variant adding job status polling or multi-format conversion, open an issue or request it.
