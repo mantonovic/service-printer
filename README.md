@@ -18,6 +18,20 @@ You do NOT need to build locally unless you are developing changes. Pulling and 
 ### 1. Prerequisites
 
 - A host running CUPS with queues already configured (check with `lpstat -p`).
+  If not present, install cups-client:
+
+```bash
+sudo apt update && sudo apt install cups-client cups
+sudo systemctl enable --now cups
+
+# Check if running
+systemctl status cups
+# This should now list queues (or none if you haven’t added any yet)
+lpstat -p 
+```
+
+
+
 - The CUPS UNIX domain socket location (usually `/run/cups/cups.sock` or `/var/run/cups/cups.sock`).
 - A writable directory on the host for dropped PDFs and archives (e.g. `${PWD}/printdrop`).
 - (Recommended) Run the container with your user UID/GID and add the CUPS socket’s group so the socket can be accessed.
