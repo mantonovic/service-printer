@@ -50,6 +50,8 @@ If you just want to test quickly (assumes socket at `/run/cups/cups.sock`):
 mkdir -p ${PWD}/printdrop
 CUPS_GID=$(stat -c %g /run/cups/cups.sock)
 
+sudo chown $(id -u):$(id -g) printdrop
+
 docker run --rm \
   --name service-printer \
   --network=host \
