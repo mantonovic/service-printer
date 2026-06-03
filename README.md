@@ -2,6 +2,8 @@
 
 This container reuses your host CUPS daemon. It discovers printers (CUPS queues), creates a folder per queue, and prints any PDF dropped into those folders to the corresponding queue. Files are archived after submission.
 
+Source Code at Github 👉 [https://github.com/mantonovic/service-printer](https://github.com/mantonovic/service-printer)
+
 ## Why host CUPS?
 
 - Your host already has queues configured (IPP, LPD, JetDirect, authentication, etc.).
@@ -9,9 +11,9 @@ This container reuses your host CUPS daemon. It discovers printers (CUPS queues)
 
 ## Using the Published Image
 
-The image is published at:
+The image is [published](https://hub.docker.com/repository/docker/mantonovic/printer-drop-service) at docker hub as:
 
-`registry.gitlab.com/tdmsa/service-printer:1.0.0`
+`mantonovic/printer-drop-service:latest`
 
 You do NOT need to build locally unless you are developing changes. Pulling and running is enough.
 
@@ -62,7 +64,7 @@ docker run --rm \
   -v /run/cups/cups.sock:/run/cups/cups.sock \
   -v /etc/cups:/etc/cups:ro \
   -v ${PWD}/printdrop:/data/printers \
-  registry.gitlab.com/tdmsa/service-printer:1.0.0
+    mantonovic/printer-drop-service:latest
 ```
 
 Then drop a PDF file:
@@ -128,7 +130,7 @@ Create `docker-compose.yml` (Compose v3+). Adjust socket path if different.
 ```yaml
 services:
   service-printer:
-    image: registry.gitlab.com/tdmsa/service-printer:1.0.0
+    image: mantonovic/printer-drop-service:latest
     container_name: service-printer
     network_mode: host            # For CUPS socket + optional mDNS visibility
     user: "${UID}:${GID}"         # Sourced automatically from .env file
@@ -179,7 +181,7 @@ docker compose logs -f service-printer
 To pull a newer patch release:
 
 ```bash
-docker pull registry.gitlab.com/tdmsa/service-printer:1.0.1
+docker pull mantonovic/printer-drop-service:latest
 docker compose up -d --force-recreate
 ```
 
