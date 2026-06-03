@@ -4,7 +4,7 @@
 
 ```bash
 version=$(cat ${PWD}/VERSION)
-docker build -t registry.gitlab.com/tdmsa/service-printer:$version .
+docker build -t mantonovic/printer-drop-service:$version .
 
 mkdir -p ${PWD}/printdrop
 
@@ -21,10 +21,20 @@ docker run --rm \
   -v /run/cups/cups.sock:/run/cups/cups.sock \
   -v /etc/cups:/etc/cups:ro \
   -v ${PWD}/printdrop:/data/printers \
-  registry.gitlab.com/tdmsa/service-printer:$version
+  mantonovic/printer-drop-service:$version
 ```
 
 Drop PDFs into `/srv/printdrop/<queue_name>/`. Each file is submitted to CUPS and then moved into `/srv/printdrop/<queue_name>/archive/`.
+
+## Push to registry
+
+```bash
+version=$(cat ${PWD}/VERSION)
+docker build -t mantonovic/printer-drop-service:$version .
+docker tag mantonovic/printer-drop-service:$version mantonovic/printer-drop-service:latest
+docker push mantonovic/printer-drop-service:$version
+docker push mantonovic/printer-drop-service:latest
+```
 
 ## PRINTER_STATIC_JSON
 
