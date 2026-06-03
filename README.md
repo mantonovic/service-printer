@@ -131,9 +131,9 @@ services:
     image: registry.gitlab.com/tdmsa/service-printer:1.0.0
     container_name: service-printer
     network_mode: host            # For CUPS socket + optional mDNS visibility
-    user: "${UID}:${GID}"         # Export your UID/GID before running: export UID=$(id -u); export GID=$(id -g)
+    user: "${UID}:${GID}"         # Sourced automatically from .env file
     group_add:
-      - "${CUPS_GID}"             # export CUPS_GID=$(stat -c %g /run/cups/cups.sock)
+      - "${CUPS_GID}"             # Sourced automatically from .env file
     environment:
       CUPS_SERVER: /run/cups/cups.sock
       DISCOVERY_METHODS: cups,mdns
@@ -159,9 +159,11 @@ services:
 Bring it up:
 
 ```bash
-export UID=$(id -u)
-export GID=$(id -g)
-export CUPS_GID=$(stat -c %g /run/cups/cups.sock)
+# Create an .env file to persist these variables across reboots
+echo "UID=$(id -u)" > .env
+echo "GID=$(id -g)" >> .env
+echo "CUPS_GID=$(stat -c %g /run/cups/cups.sock)" >> .env
+
 mkdir -p ${PWD}/printdrop
 docker compose up -d
 ```
